@@ -1,6 +1,6 @@
-use std::fmt::Display;
 use serde::de::Error as DeError;
 use serde::ser::Error as SerError;
+use std::fmt::Display;
 
 error_chain! {
     types {

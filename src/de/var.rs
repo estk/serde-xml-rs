@@ -1,5 +1,6 @@
 use std::io::Read;
 
+use log::debug;
 use serde::de::{self, Deserializer as SerdeDeserializer, IntoDeserializer};
 use xml::name::OwnedName;
 use xml::reader::XmlEvent;
@@ -56,10 +57,16 @@ impl<'de, 'a, R: 'a + Read> de::VariantAccess<'de> for VariantAccess<'a, R> {
         match self.de.next()? {
             XmlEvent::StartElement {
                 name, attributes, ..
-            } => if attributes.is_empty() {
-                self.de.expect_end_element(name)
-            } else {
-                Err(de::Error::invalid_length(attributes.len(), &"0"))
+            } => {
+                if attributes.is_empty() {
+                    self.de.expect_end_element(name)
+                } else {
+                    Err(de::Error::custom(format!(
+                        "Invalid length of unit variant {}: {}",
+                        name,
+                        attributes.len()
+                    )))
+                }
             },
             XmlEvent::Characters(_) => Ok(()),
             _ => unreachable!(),
@@ -67,7 +74,13 @@ impl<'de, 'a, R: 'a + Read> de::VariantAccess<'de> for VariantAccess<'a, R> {
     }
 
     fn newtype_variant_seed<T: de::DeserializeSeed<'de>>(self, seed: T) -> Result<T::Value> {
-        seed.deserialize(&mut *self.de)
+        match seed.deserialize(&mut *self.de) {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                debug!("Error deserializing, next is: {:?}", self.de.peek());
+                Err(e)
+            },
+        }
     }
 
     fn tuple_variant<V: de::Visitor<'de>>(self, len: usize, visitor: V) -> Result<V::Value> {

@@ -32,6 +32,10 @@
 //! }
 //! ```
 
+#![feature(unrestricted_attribute_tokens)]
+
+#[macro_use]
+extern crate serde_derive;
 
 #[macro_use]
 extern crate error_chain;
@@ -41,16 +45,13 @@ extern crate log;
 extern crate serde;
 extern crate xml;
 
-#[cfg(test)]
-#[macro_use]
-extern crate serde_derive;
-
 #[macro_use]
 mod error;
 pub mod de;
+pub mod schema;
 pub mod ser;
 
-pub use error::{Error, ErrorKind};
-pub use xml::reader::{EventReader, ParserConfig};
-pub use ser::{to_string, to_writer, Serializer};
 pub use de::{from_reader, from_str, Deserializer};
+pub use error::{Error, ErrorKind};
+pub use ser::{to_string, to_writer, Serializer};
+pub use xml::reader::{EventReader, ParserConfig};

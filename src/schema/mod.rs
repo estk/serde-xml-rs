@@ -198,7 +198,12 @@ pub struct Restriction {
 #[serde(rename_all = "camelCase")]
 pub enum RestrictionBody {
     AnyAttribute(AnyAttribute),
-    MinLength { value: u32 },
+    MinInclusive { value: f32 },
+    MaxInclusive { value: f32 },
+    MinExclusive { value: f32 },
+    MaxExclusive { value: f32 },
+    MinLength { value: f32 },
+    MaxLength { value: f32 },
     Enumeration(Enumeration),
     Sequence(Sequence),
     Attribute(Attribute),
@@ -259,6 +264,9 @@ pub struct Any {
     min_occurs: Option<u32>,
     #[serde(default = Some(MaxOccurs::Bounded(1)))]
     max_occurs: Option<MaxOccurs>,
+
+    #[serde(rename = "$value")]
+    body: Option<Vec<Annotation>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -268,6 +276,7 @@ pub struct Sequence {
     min_occurs: Option<u32>,
     #[serde(default = Some(MaxOccurs::Bounded(1)))]
     max_occurs: Option<MaxOccurs>,
+
     #[serde(rename = "$value")]
     body: Option<Vec<SequenceBody>>,
 }

@@ -7,15 +7,11 @@ use std::io::BufReader;
 
 #[test]
 fn test_print_xml_schema() {
-    let schema = read_fixture("XMLSchema.xsd").unwrap();
-    println!("XMLSchema.xsd:");
-    println!("{:#?}", schema);
+    read_fixture("XMLSchema.xsd").unwrap();
 }
 #[test]
 fn test_print_gpx() {
-    let schema = read_fixture("gpx.xsd").unwrap();
-    println!("gpx.xsd:");
-    println!("{:#?}", schema);
+    read_fixture("gpx.xsd").unwrap();
 }
 
 fn read_fixture(filename: &str) -> Result<Schema, Box<dyn Error>> {

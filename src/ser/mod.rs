@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 use serde::ser::{self, Impossible, Serialize};
 
-use error::{Error, ErrorKind, Result};
+use crate::error::{Error, ErrorKind, Result};
 use self::var::{Map, Struct};
 
 mod var;

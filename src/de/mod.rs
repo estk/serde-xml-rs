@@ -4,7 +4,7 @@ use serde::de;
 use xml::reader::{EventReader, ParserConfig, XmlEvent};
 use xml::name::OwnedName;
 
-use error::{Error, ErrorKind, Result};
+use crate::error::{Error, ErrorKind, Result};
 use self::map::MapAccess;
 use self::seq::SeqAccess;
 use self::var::EnumAccess;

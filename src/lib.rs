@@ -51,7 +51,7 @@ pub mod de;
 pub mod schema;
 pub mod ser;
 
-pub use de::{from_reader, from_str, Deserializer};
-pub use error::{Error, ErrorKind};
-pub use ser::{to_string, to_writer, Serializer};
+pub use crate::de::{from_reader, from_str, Deserializer};
+pub use crate::error::{Error, ErrorKind};
+pub use crate::ser::{to_string, to_writer, Serializer};
 pub use xml::reader::{EventReader, ParserConfig};

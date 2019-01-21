@@ -32,6 +32,7 @@
 //! }
 //! ```
 
+#![feature(type_alias_enum_variants)]
 #![feature(unrestricted_attribute_tokens)]
 
 #[macro_use]
@@ -48,6 +49,7 @@ extern crate xml;
 #[macro_use]
 mod error;
 pub mod de;
+pub mod gen;
 pub mod schema;
 pub mod ser;
 

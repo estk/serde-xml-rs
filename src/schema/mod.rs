@@ -1,3 +1,7 @@
+use proc_macro2::TokenStream;
+use quote::{quote, ToTokens, TokenStreamExt};
+use std::str::FromStr;
+
 // default unqualified
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -34,12 +38,13 @@ pub enum Final {
     List,
     Union,
 }
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 #[serde(transparent)]
 pub struct QName(String);
 
+/// This corresponds to a field of a struct
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
@@ -55,6 +60,33 @@ pub struct Element {
     r#ref: Option<String>,
     #[serde(rename = "$value")]
     body: Option<Vec<ElementBody>>,
+}
+
+impl Element {
+    fn get_doc(&self) -> Option<String> {
+        let es = self.body.as_ref()?;
+        let mut documentation = None;
+
+        // TODO clean this up with macro
+        for e in es {
+            if let ElementBody::Annotation(a) = e {
+                if let Some(es) = a.body.as_ref() {
+                    for e in es {
+                        if let AnnotationBody::Documentation(doc) = e {
+                            documentation = Some(doc.0.clone());
+                        }
+                    }
+                }
+            }
+        }
+        documentation
+    }
+}
+
+impl CodeGenerator for Element {
+    fn codegen(&self, ctx: &Context) -> TokenStream {
+        unimplemented!()
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -100,6 +132,11 @@ pub struct SimpleType {
     #[serde(rename = "$value")]
     body: Option<Vec<SimpleBody>>,
 }
+impl CodeGenerator for SimpleType {
+    fn codegen(&self, ctx: &Context) -> TokenStream {
+        unimplemented!()
+    }
+}
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
@@ -137,6 +174,12 @@ pub struct ComplexType {
     r#type: Option<QName>,
     #[serde(rename = "$value")]
     body: Option<Vec<ComplexBody>>,
+}
+
+impl CodeGenerator for ComplexType {
+    fn codegen(&self, ctx: &Context) -> TokenStream {
+        unimplemented!()
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -290,24 +333,6 @@ pub struct Import {
     #[serde(rename = "$value")]
     body: Option<Vec<Annotation>>,
 }
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-#[serde(deny_unknown_fields)]
-pub enum SchemaBody {
-    Include,
-    Import(Import),
-    Redefine,
-    Override,
-    Annotation(Annotation),
-    DefaultOpenContent,
-    SimpleType(SimpleType),
-    ComplexType(ComplexType),
-    Group(Group),
-    AttributeGroup(AttributeGroup),
-    Element(Element),
-    Attribute,
-    Notation(Notation),
-}
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -403,6 +428,47 @@ pub struct Annotation {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
+pub enum SchemaBody {
+    Include,
+    Import(Import),
+    Redefine,
+    Override,
+    Annotation(Annotation),
+    DefaultOpenContent,
+    SimpleType(SimpleType),
+    ComplexType(ComplexType),
+    Group(Group),
+    AttributeGroup(AttributeGroup),
+    Element(Element),
+    Attribute,
+    Notation(Notation),
+}
+impl CodeGenerator for SchemaBody {
+    fn codegen(&self, ctx: &Context) -> TokenStream {
+        let mut ts = TokenStream::new();
+        let body = match self {
+            Self::Include => TokenStream::new(),
+            Self::Import(i) => TokenStream::new(),
+            Self::Redefine => TokenStream::new(),
+            Self::Override => TokenStream::new(),
+            Self::Annotation(i) => TokenStream::new(),
+            Self::DefaultOpenContent => TokenStream::new(),
+            Self::SimpleType(i) => i.codegen(ctx),
+            Self::ComplexType(i) => i.codegen(ctx),
+            Self::Group(i) => TokenStream::new(),
+            Self::AttributeGroup(i) => TokenStream::new(),
+            Self::Element(i) => i.codegen(ctx),
+            Self::Attribute => TokenStream::new(),
+            Self::Notation(i) => TokenStream::new(),
+        };
+        ts.append_all(body);
+        ts
+    }
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct Schema {
     // default unqualified
     attribute_form_default: Option<AttributeForm>,
@@ -428,4 +494,49 @@ pub struct Schema {
 
     #[serde(rename = "$value")]
     body: Option<Vec<SchemaBody>>,
+}
+pub trait CodeGenerator {
+    fn codegen(&self, ctx: &Context) -> TokenStream;
+}
+pub struct Context {}
+impl Context {
+    pub fn new() -> Self {
+        Context {}
+    }
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Context {}
+    }
+}
+
+impl CodeGenerator for Schema {
+    fn codegen(&self, ctx: &Context) -> TokenStream {
+        let mut root = None;
+        // let simple_types = vec![];
+        // let complex_types = vec![];
+        if let Some(body) = self.body.as_ref() {
+            for item in body {
+                match item {
+                    SchemaBody::Element(x) => root = Some(x),
+                    _ => (),
+                }
+            }
+        }
+
+        let root = root.unwrap();
+        let root_name = root.name.as_ref().unwrap();
+        let root_type = &root.r#type.as_ref().unwrap().0;
+        let doc = format!("/// {}", root.get_doc().unwrap());
+        let mod_doc = TokenStream::from_str(&doc).unwrap();
+        quote!(
+            #mod_doc
+            mod #root_name {
+                struct #root_type {
+
+                }
+            }
+        )
+    }
 }

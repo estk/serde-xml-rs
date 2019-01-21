@@ -1,4 +1,3 @@
-extern crate serde_xml_rs;
 use serde_xml_rs::from_reader;
 use serde_xml_rs::schema::*;
 use std::error::Error;
@@ -6,12 +5,24 @@ use std::fs::File;
 use std::io::BufReader;
 
 #[test]
-fn test_print_xml_schema() {
+fn test_read_xml() {
     read_fixture("XMLSchema.xsd").unwrap();
 }
 #[test]
-fn test_print_gpx() {
+fn test_gen_xml() {
+    let xmls = read_fixture("XMLSchema.xsd").unwrap();
+    let ts = xmls.codegen(&Context::default());
+    println!("{}", ts.to_string());
+}
+#[test]
+fn test_read_gpx() {
     read_fixture("gpx.xsd").unwrap();
+}
+#[test]
+fn test_gen_gpx() {
+    let gpx = read_fixture("gpx.xsd").unwrap();
+    let ts = gpx.codegen(&Context::default());
+    println!("{}", ts.to_string());
 }
 
 fn read_fixture(filename: &str) -> Result<Schema, Box<dyn Error>> {

@@ -1,13 +1,13 @@
 use std::io::Read;
 
 use serde::de;
-use xml::reader::{EventReader, ParserConfig, XmlEvent};
 use xml::name::OwnedName;
+use xml::reader::{EventReader, ParserConfig, XmlEvent};
 
-use crate::error::{Error, ErrorKind, Result};
 use self::map::MapAccess;
 use self::seq::SeqAccess;
 use self::var::EnumAccess;
+use crate::error::{Error, ErrorKind, Result};
 
 mod map;
 mod seq;
@@ -35,7 +35,6 @@ mod var;
 pub fn from_str<'de, T: de::Deserialize<'de>>(s: &str) -> Result<T> {
     from_reader(s.as_bytes())
 }
-
 
 /// A convenience method for deserialize some object from a reader.
 ///
@@ -101,9 +100,9 @@ impl<'de, R: Read> Deserializer<R> {
     fn inner_next(&mut self) -> Result<XmlEvent> {
         loop {
             match self.reader.next().map_err(ErrorKind::Syntax)? {
-                XmlEvent::StartDocument { .. } |
-                XmlEvent::ProcessingInstruction { .. } |
-                XmlEvent::Comment(_) => { /* skip */ },
+                XmlEvent::StartDocument { .. }
+                | XmlEvent::ProcessingInstruction { .. }
+                | XmlEvent::Comment(_) => { /* skip */ },
                 other => return Ok(other),
             }
         }

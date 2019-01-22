@@ -17,7 +17,8 @@ pub enum AttributeForm {
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub enum Block {
-    // #all
+    #[serde(rename = "#all")]
+    All,
     Extension,
     Restriction,
     Substitution,
@@ -67,20 +68,20 @@ pub struct Element {
 
 impl Element {
     fn get_doc(&self) -> Option<String> {
-        let es = self.body.as_ref()?;
         let mut documentation = None;
 
-        // TODO clean this up with macro
-        for e in es {
-            if let ElementBody::Annotation(a) = e {
-                if let Some(es) = a.body.as_ref() {
+        for e in self.body.as_ref()? {
+            if_chain! {
+                if let ElementBody::Annotation(a) = e;
+                if let Some(es) = a.body.as_ref();
+                then {
                     for e in es {
                         if let AnnotationBody::Documentation(doc) = e {
-                            documentation = Some(doc.0.clone());
+                            documentation = doc.body.clone();
                         }
                     }
                 }
-            }
+            };
         }
         documentation
     }
@@ -105,6 +106,7 @@ pub enum ElementBody {
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 pub struct Key {
+    id: Option<ID>,
     name: Option<String>,
     #[serde(rename = "$value")]
     body: Option<Vec<KeyBody>>,
@@ -131,13 +133,25 @@ pub enum MaxOccurs {
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct SimpleType {
+    id: Option<ID>,
     name: Option<QName>,
     #[serde(rename = "$value")]
     body: Option<Vec<SimpleBody>>,
 }
 impl CodeGenerator for SimpleType {
     fn codegen(&self, ctx: &mut Context) -> TokenStream {
-        unimplemented!()
+        let name = &self.name.as_ref().unwrap().0.to_camel_case();
+        let name_id = Ident::new(name, Span::call_site());
+
+        if name == "String" {
+            quote!(
+                pub struct #name_id(std::string::String);
+            )
+        } else {
+            quote!(
+                pub struct #name_id(String);
+            )
+        }
     }
 }
 #[derive(Deserialize, Debug)]
@@ -181,27 +195,43 @@ pub struct ComplexType {
 
 impl CodeGenerator for ComplexType {
     fn codegen(&self, ctx: &mut Context) -> TokenStream {
-        let name = Ident::new(
-            &self.name.as_ref().unwrap().0.to_camel_case(),
-            Span::call_site(),
-        );
+        let name_str = if let Some(n) = ctx.name.as_ref() {
+            n.to_camel_case()
+        } else {
+            self.name.as_ref().unwrap().0.to_camel_case()
+        };
+        debug!("Building complex type: {}", name_str);
+        let name = Ident::new(&name_str, Span::call_site());
 
-        debug!("Building complex type: {}", name);
+        let mut sequence = vec![];
+        let mut attrs = vec![];
 
-        let sequence: Vec<&Sequence> = self
-            .body
-            .as_ref()
-            .unwrap()
-            .iter()
-            .filter_map(|e| match e {
-                ComplexBody::Sequence(s) => Some(s),
-                _ => None,
-            })
-            .collect();
+        for x in self.body.as_ref().unwrap() {
+            match x {
+                ComplexBody::Sequence(s) => sequence.push(s),
+                ComplexBody::Attribute(a) => attrs.push(a),
+                _ => (),
+            }
+        }
+
+        let fields = {
+            let mut ts = TokenStream::new();
+            for a in attrs {
+                debug!("ts is: {}", ts.to_string());
+                debug!("attr is: {:#?}", a);
+                let field = a.codegen(ctx);
+                ts.append_all(quote!(
+                    #field,
+                ))
+            }
+            ts
+        };
 
         if sequence.is_empty() {
             quote!(
-                struct #name {}
+                pub struct #name {
+                    #fields
+                }
             )
         } else {
             let mut body_ctx = ctx.with_name(&format!("{}Body", name));
@@ -209,7 +239,8 @@ impl CodeGenerator for ComplexType {
             let defs = body_ctx.defs;
 
             quote!(
-                struct #name {
+                pub struct #name {
+                    #fields
                     body: #body,
                 }
                 #defs
@@ -268,7 +299,7 @@ pub enum ExtensionBody {
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct Restriction {
-    base: String,
+    base: Option<String>,
     #[serde(rename = "$value")]
     body: Option<Vec<RestrictionBody>>,
 }
@@ -276,17 +307,57 @@ pub struct Restriction {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub enum RestrictionBody {
+    Pattern(Pattern),
+    Annotation(Annotation),
+    WhiteSpace(WhiteSpace),
+    SimpleType(SimpleType),
     AnyAttribute(AnyAttribute),
-    MinInclusive { value: f32 },
-    MaxInclusive { value: f32 },
-    MinExclusive { value: f32 },
-    MaxExclusive { value: f32 },
-    MinLength { value: f32 },
-    MaxLength { value: f32 },
+    MinInclusive {
+        value: f32,
+    },
+    MaxInclusive {
+        value: f32,
+    },
+    MinExclusive {
+        value: f32,
+    },
+    MaxExclusive {
+        value: f32,
+    },
+    MinLength {
+        value: f32,
+    },
+    MaxLength {
+        value: f32,
+    },
+    FractionDigits {
+        id: Option<ID>,
+        value: u32,
+        fixed: Option<bool>,
+    },
     Enumeration(Enumeration),
     Sequence(Sequence),
     Attribute(Attribute),
     Group(Group),
+}
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct WhiteSpace {
+    id: Option<ID>,
+    fixed: Option<bool>,
+    value: String,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct Pattern {
+    id: Option<ID>,
+    value: String,
+
+    #[serde(rename = "$value")]
+    body: Option<Annotation>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -320,6 +391,15 @@ pub struct Attribute {
 
     #[serde(rename = "$value")]
     body: Option<Vec<SimpleType>>,
+}
+impl CodeGenerator for Attribute {
+    fn codegen(&self, ctx: &mut Context) -> TokenStream {
+        let name = Ident::new(&self.name.as_ref().unwrap(), Span::call_site());
+        let ty = to_type_path(&self.r#type.as_ref().unwrap().0);
+        quote!(
+            #name: #ty
+        )
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -365,20 +445,7 @@ impl CodeGenerator for Sequence {
             })
             .map(|e| {
                 let name = Ident::new(&e.name.as_ref().unwrap().to_camel_case(), Span::call_site());
-                let mut qty_name_path = e
-                    .r#type
-                    .as_ref()
-                    .unwrap()
-                    .0
-                    .split(':')
-                    .map(|e| e.to_string())
-                    .collect::<Vec<String>>();
-
-                qty_name_path.last_mut().map(|x| *x = x.to_camel_case());
-                let ty_path = qty_name_path.join("::");
-
-                let ty_name: syn::TypePath = syn::parse_str(&ty_path).unwrap();
-                // let ty_name = Ident::new(&ty_path, Span::call_site());
+                let ty_name = to_type_path(&e.r#type.as_ref().unwrap().0);
                 quote!(
                     #name(#ty_name)
                 )
@@ -394,7 +461,7 @@ impl CodeGenerator for Sequence {
         }
 
         let companion_type = quote!(
-            enum #name {
+            pub enum #name {
                 #variant_stream
             }
         );
@@ -403,6 +470,15 @@ impl CodeGenerator for Sequence {
             Vec<#name>
         )
     }
+}
+
+fn to_type_path(s: &str) -> syn::TypePath {
+    let mut split = s.split(':').map(|e| e.to_string()).collect::<Vec<String>>();
+
+    split.last_mut().map(|x| *x = x.to_camel_case());
+    let join = split.join("::");
+
+    syn::parse_str(&join).unwrap()
 }
 
 #[derive(Deserialize, Debug)]
@@ -499,16 +575,23 @@ pub enum ChoiceBody {
 }
 
 #[derive(Deserialize, Debug)]
-#[serde(transparent)]
-pub struct Documentation(String);
+pub struct Documentation {
+    source: Option<String>,
+    #[serde(rename = "$value")]
+    body: Option<String>,
+}
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-#[serde(deny_unknown_fields)]
 pub enum AnnotationBody {
-    AppInfo,
+    #[serde(rename = "appinfo")]
+    AppInfo(Any),
     Documentation(Documentation),
 }
+
+#[serde(rename = "appinfo")]
+#[derive(Deserialize, Debug)]
+pub struct AppInfo();
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -567,7 +650,7 @@ pub struct Schema {
     attribute_form_default: Option<AttributeForm>,
     // default empty
     // could be #all, which would block all
-    block_default: Option<Vec<Block>>,
+    block_default: Option<Block>,
     // TODO
     default_attributes: Option<String>,
     // default ##local
@@ -608,7 +691,7 @@ impl Context {
 impl Default for Context {
     fn default() -> Self {
         Context {
-            name: Some("".to_string()),
+            name: None,
             defs: TokenStream::new(),
         }
     }
@@ -617,50 +700,80 @@ impl Default for Context {
 impl CodeGenerator for Schema {
     fn codegen(&self, ctx: &mut Context) -> TokenStream {
         let mut root = None;
-        // let simple_types = vec![];
+        let mut elements = vec![];
+        let mut simple_types = vec![];
         let mut complex_types = vec![];
         if let Some(body) = self.body.as_ref() {
             for item in body {
                 match item {
-                    SchemaBody::Element(x) => root = Some(x),
+                    SchemaBody::Element(x) => {
+                        if root.is_some() {
+                            elements.push(x);
+                        } else {
+                            root = Some(x);
+                        }
+                    },
                     SchemaBody::ComplexType(x) => complex_types.push(x),
+                    SchemaBody::SimpleType(x) => simple_types.push(x),
                     _ => (),
                 }
             }
         }
-
-        let root = root.unwrap();
-        let root_name_str = root.name.as_ref().unwrap();
-        let root_name = Ident::new(&root_name_str, Span::call_site());
-        let root_type_name_str = root.r#type.as_ref().unwrap().0.clone();
-        let root_type_name = Ident::new(&root_type_name_str.to_camel_case(), Span::call_site());
-        let root_doc_str = format!("/// {}", root.get_doc().unwrap());
-        let root_doc = TokenStream::from_str(&root_doc_str).unwrap();
-        let root_rename = quote!(
-            #[serde(rename = #root_name_str)]
-        );
-
+        let mut root_ts = TokenStream::new();
         let mut defs = TokenStream::new();
-        let mut root_ty = None;
+
+        let root_name_str = root
+            .map(|r| r.name.clone().unwrap())
+            .unwrap_or("unnamed".to_string());
+        let root_name = Ident::new(&root_name_str, Span::call_site());
+
+        let (root_tn, root_doc) = if let Some(r) = root {
+            let doc = r
+                .get_doc()
+                .map(|d| format!("/// {}", d))
+                .unwrap_or("".to_string());
+            let mut doc_ts = TokenStream::from_str(&doc).unwrap();
+            doc_ts.append_all(quote!(
+                #[serde(rename = #root_name_str)]
+            ));
+
+            if let Some(name) = r.r#type.as_ref() {
+                (name.0.clone(), doc_ts)
+            } else {
+                for x in r.body.as_ref().unwrap() {
+                    if let ElementBody::ComplexType(t) = x {
+                        debug!("building with root name: {}", root_name_str);
+                        defs.append_all(t.codegen(&mut ctx.with_name(&root_name_str)));
+                    }
+                }
+                (root_name_str.to_string(), doc_ts)
+            }
+        } else {
+            ("".to_string(), TokenStream::new())
+        };
+
+        for t in simple_types {
+            defs.append_all(t.codegen(ctx));
+        }
+        // for e in elements {
+        //     defs.append_all(e.codegen(ctx))
+        // }
         for t in complex_types {
-            println!("ty name: {}", t.name.as_ref().unwrap().0);
-            println!("ty search: {}", root_type_name_str);
             if_chain! {
                 if let Some(n) = t.name.as_ref();
-                if n.0 == root_type_name_str;
+                if n.0 == root_tn;
                 then {
-                    root_ty = Some(t);
+                    root_ts.append_all(t.codegen(ctx));
                 } else {
+                    debug!("genning for {:?}", t);
                     defs.append_all(t.codegen(ctx));
                 }
             };
         }
-        let root_def = root_ty.unwrap().codegen(ctx);
         quote!(
             mod #root_name {
                 #root_doc
-                #root_rename
-                #root_def
+                #root_ts
                 #defs
             }
         )

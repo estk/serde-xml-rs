@@ -11,7 +11,7 @@ fn test_read_xml() {
 #[test]
 fn test_gen_xml() {
     let xmls = read_fixture("XMLSchema.xsd").unwrap();
-    let ts = xmls.codegen(&Context::default());
+    let ts = xmls.codegen(&mut Context::default());
     println!("{}", ts.to_string());
 }
 #[test]
@@ -20,9 +20,10 @@ fn test_read_gpx() {
 }
 #[test]
 fn test_gen_gpx() {
+    pretty_env_logger::init();
     let gpx = read_fixture("gpx.xsd").unwrap();
-    let ts = gpx.codegen(&Context::default());
-    println!("{}", ts.to_string());
+    let ts = gpx.codegen(&mut Context::default());
+    eprintln!("{}", ts.to_string());
 }
 
 fn read_fixture(filename: &str) -> Result<Schema, Box<dyn Error>> {

@@ -49,7 +49,6 @@ extern crate xml;
 #[macro_use]
 mod error;
 pub mod de;
-pub mod gen;
 pub mod schema;
 pub mod ser;
 

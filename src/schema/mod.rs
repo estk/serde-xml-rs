@@ -68,22 +68,13 @@ pub struct Element {
 
 impl Element {
     fn get_doc(&self) -> Option<String> {
-        let mut documentation = None;
-
         for e in self.body.as_ref()? {
-            if_chain! {
-                if let ElementBody::Annotation(a) = e;
-                if let Some(es) = a.body.as_ref();
-                then {
-                    for e in es {
-                        if let AnnotationBody::Documentation(doc) = e {
-                            documentation = doc.body.clone();
-                        }
-                    }
-                }
-            };
+            if let ElementBody::Annotation(a) = e {
+                return a.get_doc();
+            }
         }
-        documentation
+
+        None
     }
 }
 
@@ -138,17 +129,42 @@ pub struct SimpleType {
     #[serde(rename = "$value")]
     body: Option<Vec<SimpleBody>>,
 }
+
+impl SimpleType {
+    fn get_doc(&self) -> Option<String> {
+        for e in self.body.as_ref()? {
+            if let SimpleBody::Annotation(a) = e {
+                return a.get_doc();
+            }
+        }
+        None
+    }
+}
+
 impl CodeGenerator for SimpleType {
     fn codegen(&self, ctx: &mut Context) -> TokenStream {
         let name = &self.name.as_ref().unwrap().0.to_camel_case();
         let name_id = Ident::new(name, Span::call_site());
+        let mut doc = TokenStream::new();
+        if let Some(s) = self.get_doc() {
+            doc.append_all(TokenStream::from_str(&format!("/// {}", s)))
+        }
+        doc.append_all(quote!(
+            #[derive(Serialize, Deserialize, Debug)]
+            #[serde(rename_all = "camelCase")]
+        ));
 
+        doc.append_all(quote!(
+            #[serde(transparent)]
+        ));
         if name == "String" {
             quote!(
+                #doc
                 pub struct #name_id(std::string::String);
             )
         } else {
             quote!(
+                #doc
                 pub struct #name_id(String);
             )
         }
@@ -202,6 +218,10 @@ impl CodeGenerator for ComplexType {
         };
         debug!("Building complex type: {}", name_str);
         let name = Ident::new(&name_str, Span::call_site());
+        let doc = quote!(
+            #[derive(Serialize, Deserialize, Debug)]
+            #[serde(rename_all = "camelCase")]
+        );
 
         let mut sequence = vec![];
         let mut attrs = vec![];
@@ -229,6 +249,7 @@ impl CodeGenerator for ComplexType {
 
         if sequence.is_empty() {
             quote!(
+                #doc
                 pub struct #name {
                     #fields
                 }
@@ -239,8 +260,10 @@ impl CodeGenerator for ComplexType {
             let defs = body_ctx.defs;
 
             quote!(
+                #doc
                 pub struct #name {
                     #fields
+                    #[serde(rename="$value")]
                     body: #body,
                 }
                 #defs
@@ -394,10 +417,13 @@ pub struct Attribute {
 }
 impl CodeGenerator for Attribute {
     fn codegen(&self, ctx: &mut Context) -> TokenStream {
-        let name = Ident::new(&self.name.as_ref().unwrap(), Span::call_site());
+        let name = self.name.as_ref().unwrap();
+        let name_id = Ident::new(&name, Span::call_site());
         let ty = to_type_path(&self.r#type.as_ref().unwrap().0);
+        let mut doc = TokenStream::new();
         quote!(
-            #name: #ty
+            #doc
+            #name_id: #ty
         )
     }
 }
@@ -459,8 +485,13 @@ impl CodeGenerator for Sequence {
                 #v,
             )
         }
+        let doc = quote!(
+            #[derive(Serialize, Deserialize, Debug)]
+            #[serde(rename_all = "camelCase")]
+        );
 
         let companion_type = quote!(
+            #doc
             pub enum #name {
                 #variant_stream
             }
@@ -599,6 +630,18 @@ pub struct Annotation {
     namespace: Option<String>,
     #[serde(rename = "$value")]
     body: Option<Vec<AnnotationBody>>,
+}
+impl Annotation {
+    fn get_doc(&self) -> Option<String> {
+        if let Some(es) = self.body.as_ref() {
+            for e in es {
+                if let AnnotationBody::Documentation(doc) = e {
+                    return doc.body.clone();
+                }
+            }
+        }
+        None
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -771,11 +814,11 @@ impl CodeGenerator for Schema {
             };
         }
         quote!(
-            mod #root_name {
-                #root_doc
-                #root_ts
-                #defs
-            }
+            use serde_derive::{Deserialize, Serialize};
+
+            #root_doc
+            #root_ts
+            #defs
         )
     }
 }
